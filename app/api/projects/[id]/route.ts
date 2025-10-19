@@ -5,11 +5,12 @@ import { ObjectId } from 'mongodb';
 // GET single project
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const collection = await getProjectsCollection();
-    const project = await collection.findOne({ _id: new ObjectId(params.id) });
+    const project = await collection.findOne({ _id: new ObjectId(id) });
     
     if (!project) {
       return NextResponse.json(
@@ -34,9 +35,10 @@ export async function GET(
 // PUT update project
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const body = await request.json();
     const collection = await getProjectsCollection();
     
@@ -51,7 +53,7 @@ export async function PUT(
     };
     
     const result = await collection.findOneAndUpdate(
-      { _id: new ObjectId(params.id) },
+      { _id: new ObjectId(id) },
       { $set: updateData },
       { returnDocument: 'after' }
     );
@@ -79,11 +81,12 @@ export async function PUT(
 // DELETE project
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const collection = await getProjectsCollection();
-    const result = await collection.deleteOne({ _id: new ObjectId(params.id) });
+    const result = await collection.deleteOne({ _id: new ObjectId(id) });
     
     if (result.deletedCount === 0) {
       return NextResponse.json(

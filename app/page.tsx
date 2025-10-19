@@ -8,17 +8,30 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
+import { 
+  AlertDialog, 
+  AlertDialogAction, 
+  AlertDialogCancel, 
+  AlertDialogContent, 
+  AlertDialogDescription, 
+  AlertDialogFooter, 
+  AlertDialogHeader, 
+  AlertDialogTitle 
+} from '@/components/ui/alert-dialog';
+import { useToast } from '@/components/ui/use-toast';
 import { Project, ProductType, STATUSES } from '@/types';
 
 export default function ProjectTracker() {
+  const { toast } = useToast();
   const [projects, setProjects] = useState<Project[]>([]);
   const [productTypes, setProductTypes] = useState<ProductType[]>([]);
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState('All');
-  const [showProductManager, setShowProductManager] = useState(false);
   const [newProductType, setNewProductType] = useState('');
   const [loading, setLoading] = useState(true);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [productTypeToDelete, setProductTypeToDelete] = useState<ProductType | null>(null);
   
   const [formData, setFormData] = useState<Partial<Project>>({
     name: '',
@@ -42,11 +55,14 @@ export default function ProjectTracker() {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
       const data = await response.json();
-      console.log('Fetched projects:', data);
       setProjects(data);
     } catch (error) {
       console.error('Error fetching projects:', error);
-      alert('Failed to fetch projects. Check console for details.');
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to fetch projects. Please try again.",
+      });
     } finally {
       setLoading(false);
     }
@@ -59,11 +75,14 @@ export default function ProjectTracker() {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
       const data = await response.json();
-      console.log('Fetched product types:', data);
       setProductTypes(data);
     } catch (error) {
       console.error('Error fetching product types:', error);
-      alert('Failed to fetch product types. Check console for details.');
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to fetch product types. Please try again.",
+      });
     }
   };
 
@@ -78,8 +97,17 @@ export default function ProjectTracker() {
         const newProject = await response.json();
         setProjects([...projects, newProject]);
         resetForm();
+        toast({
+          title: "Success!",
+          description: "Project created successfully.",
+        });
       } catch (error) {
         console.error('Error adding project:', error);
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: "Failed to create project. Please try again.",
+        });
       }
     }
   };
@@ -101,20 +129,36 @@ export default function ProjectTracker() {
         const updatedProject = await response.json();
         setProjects(projects.map(p => p._id === editingId ? updatedProject : p));
         resetForm();
+        toast({
+          title: "Success!",
+          description: "Project updated successfully.",
+        });
       } catch (error) {
         console.error('Error updating project:', error);
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: "Failed to update project. Please try again.",
+        });
       }
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (confirm('Are you sure you want to delete this project?')) {
-      try {
-        await fetch(`/api/projects/${id}`, { method: 'DELETE' });
-        setProjects(projects.filter(p => p._id !== id));
-      } catch (error) {
-        console.error('Error deleting project:', error);
-      }
+    try {
+      await fetch(`/api/projects/${id}`, { method: 'DELETE' });
+      setProjects(projects.filter(p => p._id !== id));
+      toast({
+        title: "Success!",
+        description: "Project deleted successfully.",
+      });
+    } catch (error) {
+      console.error('Error deleting project:', error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to delete project. Please try again.",
+      });
     }
   };
 
@@ -148,41 +192,64 @@ export default function ProjectTracker() {
         }
         
         const newType = await response.json();
-        console.log('Added product type:', newType);
         setProductTypes([...productTypes, newType].sort((a, b) => a.name.localeCompare(b.name)));
         setNewProductType('');
+        toast({
+          title: "Success!",
+          description: `Product type "${newType.name}" added successfully.`,
+        });
       } catch (error) {
         console.error('Error adding product type:', error);
-        alert(error instanceof Error ? error.message : 'Failed to add product type');
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: error instanceof Error ? error.message : 'Failed to add product type',
+        });
       }
     }
   };
 
-  const deleteProductType = async (id: string) => {
-    if (confirm('Are you sure? This will remove this product type from all projects.')) {
-      try {
-        const response = await fetch(`/api/product-types/${id}`, { method: 'DELETE' });
-        
-        if (!response.ok) {
-          const error = await response.json();
-          throw new Error(error.error || 'Failed to delete product type');
-        }
-        
-        console.log('Deleted product type:', id);
-        const deletedType = productTypes.find(pt => pt._id === id);
-        setProductTypes(productTypes.filter(pt => pt._id !== id));
-        
-        // Update projects in local state
-        if (deletedType) {
-          setProjects(projects.map(p => ({
-            ...p,
-            productTypes: p.productTypes.filter(pt => pt !== deletedType.name)
-          })));
-        }
-      } catch (error) {
-        console.error('Error deleting product type:', error);
-        alert(error instanceof Error ? error.message : 'Failed to delete product type');
+  const openDeleteDialog = (type: ProductType) => {
+    setProductTypeToDelete(type);
+    setDeleteDialogOpen(true);
+  };
+
+  const confirmDeleteProductType = async () => {
+    if (!productTypeToDelete) return;
+    
+    try {
+      const response = await fetch(`/api/product-types/${productTypeToDelete._id}`, { 
+        method: 'DELETE' 
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to delete product type');
       }
+      
+      // Update product types list
+      setProductTypes(productTypes.filter(pt => pt._id !== productTypeToDelete._id));
+      
+      // Update projects in local state
+      setProjects(projects.map(p => ({
+        ...p,
+        productTypes: p.productTypes.filter(pt => pt !== productTypeToDelete.name)
+      })));
+      
+      toast({
+        title: "Success!",
+        description: `Product type "${productTypeToDelete.name}" deleted successfully.`,
+      });
+      
+      setDeleteDialogOpen(false);
+      setProductTypeToDelete(null);
+    } catch (error) {
+      console.error('Error deleting product type:', error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error instanceof Error ? error.message : 'Failed to delete product type',
+      });
     }
   };
 
@@ -220,26 +287,16 @@ export default function ProjectTracker() {
           <CardHeader>
             <div className="flex items-center justify-between">
               <div>
-                <CardTitle className="text-3xl">AutoCAD Project Tracker</CardTitle>
+                <CardTitle className="text-3xl">Project Tracker</CardTitle>
                 <CardDescription className="mt-1">Lindsay Precast Design Projects</CardDescription>
               </div>
-              <div className="flex gap-2">
-                <Button
-                  onClick={() => setShowProductManager(!showProductManager)}
-                  variant="secondary"
-                  className="flex items-center gap-2"
-                >
-                  <Settings size={20} />
-                  Manage Products
-                </Button>
-                <Button
-                  onClick={() => setIsAdding(!isAdding)}
-                  className="flex items-center gap-2"
-                >
-                  <Plus size={20} />
-                  New Project
-                </Button>
-              </div>
+              <Button
+                onClick={() => setIsAdding(!isAdding)}
+                className="flex items-center gap-2"
+              >
+                <Plus size={20} />
+                New Project
+              </Button>
             </div>
           </CardHeader>
           <CardContent>
@@ -259,49 +316,6 @@ export default function ProjectTracker() {
             </div>
           </CardContent>
         </Card>
-
-        {showProductManager && (
-          <Card className="mb-6">
-            <CardHeader>
-              <CardTitle>Manage Product Types</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex gap-2 mb-4">
-                <Input
-                  type="text"
-                  value={newProductType}
-                  onChange={(e) => setNewProductType(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && addProductType()}
-                  placeholder="Enter new product type..."
-                />
-                <Button
-                  onClick={addProductType}
-                  className="flex items-center gap-2"
-                >
-                  <Plus size={18} />
-                  Add
-                </Button>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {productTypes.length === 0 ? (
-                  <p className="text-sm text-slate-500">No product types yet. Add one above to get started.</p>
-                ) : (
-                  productTypes.map(type => (
-                    <Badge key={type._id} variant="secondary" className="flex items-center gap-2 px-3 py-2">
-                      <span>{type.name}</span>
-                      <button
-                        onClick={() => type._id && deleteProductType(type._id)}
-                        className="text-red-600 hover:text-red-800"
-                      >
-                        <X size={16} />
-                      </button>
-                    </Badge>
-                  ))
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        )}
 
         {(isAdding || editingId) && (
           <Card className="mb-6">
@@ -344,6 +358,51 @@ export default function ProjectTracker() {
                         {type.name}
                       </Button>
                     ))}
+                  </div>
+                </div>
+                <div className="col-span-2">
+                  <div className="border-t pt-4 mt-2">
+                    <Label className="flex items-center gap-2 mb-3">
+                      <Settings size={16} />
+                      Manage Product Types
+                    </Label>
+                    <div className="flex gap-2 mb-3">
+                      <Input
+                        type="text"
+                        value={newProductType}
+                        onChange={(e) => setNewProductType(e.target.value)}
+                        onKeyPress={(e) => e.key === 'Enter' && addProductType()}
+                        placeholder="Add new product type..."
+                        className="flex-1"
+                      />
+                      <Button
+                        type="button"
+                        onClick={addProductType}
+                        variant="secondary"
+                        className="flex items-center gap-2"
+                      >
+                        <Plus size={18} />
+                        Add Type
+                      </Button>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {productTypes.length === 0 ? (
+                        <p className="text-xs text-slate-500">No product types yet. Add one above to get started.</p>
+                      ) : (
+                        productTypes.map(type => (
+                          <Badge key={type._id} variant="outline" className="flex items-center gap-2 px-2 py-1">
+                            <span className="text-xs">{type.name}</span>
+                            <button
+                              type="button"
+                              onClick={() => openDeleteDialog(type)}
+                              className="text-red-600 hover:text-red-800 ml-1"
+                            >
+                              <X size={14} />
+                            </button>
+                          </Badge>
+                        ))
+                      )}
+                    </div>
                   </div>
                 </div>
                 <div>
@@ -468,6 +527,29 @@ export default function ProjectTracker() {
           )}
         </div>
       </div>
+
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Product Type?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete &quot;{productTypeToDelete?.name}&quot;? 
+              This will remove it from all projects. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setProductTypeToDelete(null)}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={confirmDeleteProductType}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
